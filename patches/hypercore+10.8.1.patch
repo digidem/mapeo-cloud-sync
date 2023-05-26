@@ -1,0 +1,36 @@
+diff --git a/node_modules/hypercore/index.js b/node_modules/hypercore/index.js
+index 4b70d35..d4ec0a9 100644
+--- a/node_modules/hypercore/index.js
++++ b/node_modules/hypercore/index.js
+@@ -328,7 +328,8 @@ module.exports = class Hypercore extends EventEmitter {
+       legacy: opts.legacy,
+       auth: opts.auth,
+       onupdate: this._oncoreupdate.bind(this),
+-      onconflict: this._oncoreconflict.bind(this)
++      onconflict: this._oncoreconflict.bind(this),
++      blockStore: opts.blockStore
+     })
+ 
+     if (opts.userData) {
+diff --git a/node_modules/hypercore/lib/core.js b/node_modules/hypercore/lib/core.js
+index a7351c7..817abc9 100644
+--- a/node_modules/hypercore/lib/core.js
++++ b/node_modules/hypercore/lib/core.js
+@@ -33,7 +33,7 @@ module.exports = class Core {
+     const oplogFile = storage('oplog')
+     const treeFile = storage('tree')
+     const bitfieldFile = storage('bitfield')
+-    const dataFile = storage('data')
++    const dataFile = opts.blockStore ? undefined : storage('data')
+ 
+     try {
+       return await this.resume(oplogFile, treeFile, bitfieldFile, dataFile, opts)
+@@ -110,7 +110,7 @@ module.exports = class Core {
+ 
+     const tree = await MerkleTree.open(treeFile, { crypto, ...header.tree })
+     const bitfield = await Bitfield.open(bitfieldFile, tree)
+-    const blocks = new BlockStore(dataFile, tree)
++    const blocks = opts.blockStore ? opts.blockStore(header.signer.publicKey, tree) : new BlockStore(dataFile, tree)
+ 
+     if (overwrite) {
+       await tree.clear()

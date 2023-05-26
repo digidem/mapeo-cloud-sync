@@ -1,0 +1,36 @@
+diff --git a/node_modules/hyperdrive/index.js b/node_modules/hyperdrive/index.js
+index b01c31f..6eb539a 100644
+--- a/node_modules/hyperdrive/index.js
++++ b/node_modules/hyperdrive/index.js
+@@ -14,9 +14,9 @@ module.exports = class Hyperdrive extends ReadyResource {
+       opts = key
+       key = null
+     }
+-    const { _checkout, _db, _files, onwait } = opts
++    const { _checkout, _db, _files, onwait, blockStore } = opts
+     this._onwait = onwait || null
+-
++    this._blockStore = blockStore
+     this.corestore = corestore
+     this.db = _db || makeBee(key, corestore, this._onwait)
+     this.files = _files || this.db.sub('files')
+@@ -113,7 +113,8 @@ module.exports = class Hyperdrive extends ReadyResource {
+     const blobsCore = this.corestore.get({
+       key: blobsKey,
+       cache: false,
+-      onwait: this._onwait
++      onwait: this._onwait,
++      blockStore: this._blockStore
+     })
+     await blobsCore.ready()
+ 
+@@ -134,7 +135,8 @@ module.exports = class Hyperdrive extends ReadyResource {
+       const blobsCore = this.corestore.get({
+         name: 'blobs',
+         cache: false,
+-        onwait: this._onwait
++        onwait: this._onwait,
++        blockStore: this._blockStore
+       })
+       await blobsCore.ready()
+ 
