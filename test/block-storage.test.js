@@ -1,17 +1,23 @@
 import test from 'tape'
-import { createCore, createDrive } from './helpers.js'
+import { env } from './helpers.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import b4a from 'b4a'
 import Hyperdrive from 'hyperdrive'
 import { createRequire } from 'node:module'
+import { discoveryKey } from 'hypercore-crypto'
+import S3BlockStore from '../src/s3-block-store.js'
+import Hypercore from 'hypercore'
+import Corestore from 'corestore'
+import RAM from 'random-access-memory'
+import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3'
 
 const __filename = new URL(import.meta.url).pathname
 const require = createRequire(import.meta.url)
 
 test('basic', async function (t) {
-  const core = await createCore()
+  const core = await createCore(t.teardown)
   let appends = 0
 
   t.is(core.length, 0)
@@ -33,7 +39,7 @@ test('basic', async function (t) {
 })
 
 test('has', async function (t) {
-  const core = await createCore()
+  const core = await createCore(t.teardown)
   await core.append(['a', 'b', 'c', 'd', 'e', 'f'])
 
   for (let i = 0; i < core.length; i++) {
@@ -53,7 +59,7 @@ test('has', async function (t) {
 })
 
 test('has range', async function (t) {
-  const core = await createCore()
+  const core = await createCore(t.teardown)
   await core.append(['a', 'b', 'c', 'd', 'e', 'f'])
 
   t.ok(await core.has(0, 5), 'has 0 to 4')
@@ -68,7 +74,7 @@ test('has range', async function (t) {
 
 test('Hyperdrive(corestore, key)', async (t) => {
   t.plan(2)
-  const { corestore, drive } = await createDrive()
+  const { corestore, drive } = await createDrive(t.teardown)
   const diskbuf = fs.readFileSync(__filename)
   await drive.put(__filename, diskbuf)
   const bndlbuf = await drive.get(__filename)
@@ -81,7 +87,7 @@ test('Hyperdrive(corestore, key)', async (t) => {
 
 test('drive.put(path, buf) and drive.get(path)', async (t) => {
   {
-    const { drive } = await createDrive()
+    const { drive } = await createDrive(t.teardown)
     const diskbuf = fs.readFileSync(__filename)
     await drive.put(__filename, diskbuf)
     const bndlbuf = await drive.get(__filename)
@@ -89,7 +95,7 @@ test('drive.put(path, buf) and drive.get(path)', async (t) => {
   }
 
   {
-    const { drive } = await createDrive()
+    const { drive } = await createDrive(t.teardown)
     const tmppath = path.join(os.tmpdir(), 'hyperdrive-test-')
     const dirpath = fs.mkdtempSync(tmppath)
     const filepath = path.join(dirpath, 'hello-world.js')
@@ -101,3 +107,73 @@ test('drive.put(path, buf) and drive.get(path)', async (t) => {
     t.is(require(filepath)(), 'Hello, World!')
   }
 })
+
+/** @param {test.Test['teardown']} teardown */
+export async function createCore(teardown) {
+  const core = new Hypercore(RAM, { blockStore: createBlockStore })
+  await core.ready()
+  teardown(async () => {
+    const prefix = core.discoveryKey.toString('hex')
+    const s3Client = new S3Client(s3ClientConfig)
+    const promises = []
+    for (let i = 0; i < core.length; i++) {
+      promises.push(deleteObject(s3Client, prefix + '/' + i))
+    }
+    await Promise.all(promises)
+    s3Client.destroy()
+  })
+  return core
+}
+
+/** @param {test.Test['teardown']} teardown */
+export async function createDrive(teardown) {
+  const corestore = new Corestore(RAM)
+  const drive = new Hyperdrive(corestore, { blockStore: createBlockStore })
+  await drive.ready()
+  teardown(async () => {
+    const prefix = discoveryKey(drive.contentKey).toString('hex')
+    const s3Client = new S3Client(s3ClientConfig)
+    const promises = []
+    for (let i = 0; i < drive.blobs?.core.length; i++) {
+      promises.push(deleteObject(s3Client, prefix + '/' + i))
+    }
+    await Promise.all(promises)
+    s3Client.destroy()
+  })
+  return { drive, corestore }
+}
+
+/**
+ *
+ * @param {S3Client} s3Client
+ * @param {string} key
+ * @returns
+ */
+async function deleteObject(s3Client, key) {
+  const command = new DeleteObjectCommand({
+    Bucket: env.AWS_S3_BUCKET,
+    Key: key,
+  })
+  return s3Client.send(command)
+}
+
+/** @type {import('@aws-sdk/client-s3').S3ClientConfig} */
+const s3ClientConfig = {
+  credentials: {
+    accessKeyId: env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+  },
+  region: env.AWS_S3_REGION,
+  endpoint: env.AWS_S3_ENDPOINT,
+  forcePathStyle: true,
+}
+
+/** @type {import('../src/app.js').BlockStoreOption} */
+const createBlockStore = (key, tree) => {
+  return new S3BlockStore({
+    bucketName: env.AWS_S3_BUCKET,
+    tree,
+    prefix: discoveryKey(key).toString('hex'),
+    s3ClientConfig,
+  })
+}
