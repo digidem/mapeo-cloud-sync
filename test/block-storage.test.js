@@ -1,17 +1,19 @@
-import test from 'tape'
-import { env } from './helpers.js'
-import fs from 'node:fs'
-import path from 'node:path'
-import os from 'node:os'
-import b4a from 'b4a'
-import Hyperdrive from 'hyperdrive'
-import { createRequire } from 'node:module'
-import { discoveryKey } from 'hypercore-crypto'
-import S3BlockStore from '../src/s3-block-store.js'
-import Hypercore from 'hypercore'
-import Corestore from 'corestore'
-import RAM from 'random-access-memory'
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import b4a from 'b4a'
+import Corestore from 'corestore'
+import Hypercore from 'hypercore'
+import { discoveryKey } from 'hypercore-crypto'
+import Hyperdrive from 'hyperdrive'
+import RAM from 'random-access-memory'
+import test from 'tape'
+
+import fs from 'node:fs'
+import { createRequire } from 'node:module'
+import os from 'node:os'
+import path from 'node:path'
+
+import S3BlockStore from '../src/s3-block-store.js'
+import { env } from './helpers.js'
 
 const __filename = new URL(import.meta.url).pathname
 const require = createRequire(import.meta.url)

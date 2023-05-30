@@ -1,8 +1,10 @@
-import createFastify from 'fastify'
 import fastifyWebsocket from '@fastify/websocket'
 import Corestore from 'corestore'
+import createFastify from 'fastify'
 import RAM from 'random-access-memory'
+
 import routes from './routes.js'
+
 /** @typedef {(key: Buffer, tree: any) => import('./s3-block-store.js').default} BlockStoreOption */
 
 /**

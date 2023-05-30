@@ -1,14 +1,16 @@
-import RAM from 'random-access-memory'
-import Corestore from 'corestore'
-import Hyperdrive from 'hyperdrive'
-import test from 'tape'
-import fs from 'node:fs'
-import { once } from 'node:events'
-import { WebSocket } from 'ws'
-import { pipeline } from 'node:stream/promises'
 import BlockStream from 'block-stream2'
-import randomBytesReadableStream from 'random-bytes-readable-stream'
+import Corestore from 'corestore'
 import { execaNode } from 'execa'
+import Hyperdrive from 'hyperdrive'
+import RAM from 'random-access-memory'
+import randomBytesReadableStream from 'random-bytes-readable-stream'
+import test from 'tape'
+import { WebSocket } from 'ws'
+
+import { once } from 'node:events'
+import fs from 'node:fs'
+import { pipeline } from 'node:stream/promises'
+
 import WebSocketHypercoreReplicator from '../src/ws-core-replicator.js'
 import { createHashStream, env } from './helpers.js'
 
@@ -25,24 +27,49 @@ test('replicate', async (t) => {
   await drive.ready()
   const driveId = drive.key.toString('hex')
 
+  const hashes = await writeRandomData(drive, { count: 5 })
+  const url = new URL(`/sync/${driveId}`, serverUrl)
+  const ws = new WebSocket(url)
+  const replicator = new WebSocketHypercoreReplicator(
+    ws,
+    store.replicate(true, { keepAlive: false })
+  )
+  replicator.on('message', (data) => console.log('client receive', data))
+  await once(replicator, 'close')
+})
+
+/**
+ * Write random files to a hyperdrive
+ *
+ * @param {Hyperdrive} drive
+ * @param {object} opts
+ * @param {number} opts.count How many files to write
+ * @param {number} [opts.min] Min size of files in bytes (default 1Mb)
+ * @param {number} [opts.max] Max size of files in bytes (default 5Mb)
+ * @param {number} [opts.chunkSize] Size of chunks to write to content hypercore (default 256Kb)
+ * @param {{ count: number, min?: number, max?: number}} opts
+ * @returns {Promise<string[]>} Array of hashes of data written to the drive
+ */
+async function writeRandomData(
+  drive,
+  { count, min = 1 * Mb, max = 5 * Mb, chunkSize = 256 * 1024 }
+) {
   const writePromises = []
-  const hashes = []
-  for (let i = 0; i < 100; i++) {
-    const rs = randomBytesReadableStream({ size: random(1 * Mb, 5 * Mb) })
+  const hashStreams = []
+  for (let i = 0; i < count; i++) {
+    const rs = randomBytesReadableStream({ size: random(min, max) })
     const hash = createHashStream('md5')
     const blockStream = new BlockStream({
-      size: 512 * 1024,
+      size: chunkSize,
       zeroPadding: false,
     })
     const ws = drive.createWriteStream(`/${i}.bin`)
     writePromises.push(pipeline(rs, hash, blockStream, ws))
-    hashes.push(hash)
+    hashStreams.push(hash)
   }
   await Promise.all(writePromises)
-  const url = new URL(`/sync/${driveId}`, serverUrl)
-  const ws = new WebSocket(url)
-  const replicator = new WebSocketHypercoreReplicator(ws, store.replicate(true))
-})
+  return hashStreams.map((s) => s.digest('hex'))
+}
 
 /**
  * Create random integer in range min,max

@@ -1,8 +1,17 @@
+import { pipeline } from 'streamx'
 import { TypedEmitter } from 'tiny-typed-emitter'
 import { createWebSocketStream, WebSocket } from 'ws'
-import { WebsocketSafetyTransform } from './utils.js'
+
 import { once } from 'node:events'
 
+import { WebsocketSafetyTransform } from './utils.js'
+
+/**
+ * @typedef {object} Events
+ * @property {(data: import('ws').RawData, isBinary: boolean) => void} message
+ */
+
+/** @extends {TypedEmitter<Events>} */
 export default class WebSocketHypercoreReplicator extends TypedEmitter {
   #ws
   /** @type {any} */
@@ -24,6 +33,7 @@ export default class WebSocketHypercoreReplicator extends TypedEmitter {
       this.emit('close')
     })
     ws.on('error', (code) => console.log('ws error ' + name, code))
+    ws.on('message', (data, isBinary) => this.emit('message', data, isBinary))
     conn.on('error', (e) => console.log('conn error ' + name, e))
     console.log('ws state ' + name, ws.readyState)
     const onOpen = () => {
@@ -36,10 +46,15 @@ export default class WebSocketHypercoreReplicator extends TypedEmitter {
         console.trace('END')
       )
 
-      conn
-        .pipe(protocolStream)
-        .pipe(new WebsocketSafetyTransform(ws))
-        .pipe(conn)
+      pipeline(
+        conn,
+        protocolStream,
+        new WebsocketSafetyTransform(ws),
+        conn,
+        (err) => {
+          if (err) console.log('stream error ' + name, err)
+        }
+      )
     }
     if (ws.readyState === ws.CONNECTING) {
       ws.on('open', onOpen)

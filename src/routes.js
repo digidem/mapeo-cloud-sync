@@ -1,5 +1,6 @@
 import { Type } from '@sinclair/typebox'
 import Hyperdrive from 'hyperdrive'
+
 import WebSocketHypercoreReplicator from './ws-core-replicator.js'
 
 const HEX_REGEX_32_BYTES = '^[0-9a-fA-F]{64}$'
@@ -25,14 +26,14 @@ export default async function routes(fastify) {
         const drive = new Hyperdrive(store, key, { blockStore })
         const replicator = new WebSocketHypercoreReplicator(
           conn.socket,
-          store.replicate(false)
+          store.replicate(false, { keepAlive: false })
         )
         // Need to await update before trying to download
         await drive.update({ wait: true })
         console.time('download')
         await drive.download({ recursive: true })
         console.timeEnd('download')
-        await replicator.end()
+        replicator.on('message', (data) => console.log(data))
       }
     )
   })

@@ -1,7 +1,9 @@
-import createServer from './src/app.js'
-import assert from 'node:assert'
-import S3BlockStore from './src/s3-block-store.js'
 import { discoveryKey } from 'hypercore-crypto'
+
+import assert from 'node:assert'
+
+import createServer from './src/app.js'
+import S3BlockStore from './src/s3-block-store.js'
 
 const requiredEnv = /** @type {const} */ ([
   'AWS_ACCESS_KEY_ID',
